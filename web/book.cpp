@@ -35,6 +35,8 @@ Book::Book(QWidget *parent)
     pFileVBL->addWidget(pDelFilePB_);
     pFileVBL->addWidget(pShareFilePB_);
     pFileVBL->addWidget(pMoveFilePB_);
+    // Bug F 修复：pSelectMoveDir_ 之前没 addWidget，按钮永远不可见
+    pFileVBL->addWidget(pSelectMoveDir_);
 
     QHBoxLayout *pMain=new QHBoxLayout;
     pMain->addWidget(pBookListW_);

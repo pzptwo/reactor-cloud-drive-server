@@ -8,6 +8,7 @@
 #include <QMessageBox>
 #include <QStringList>
 #include <QHostAddress>
+#include <QNetworkProxy>
 #include "book.h"
 #include "sharefile.h"
 
@@ -22,9 +23,15 @@ TcpClient::TcpClient(QWidget *parent)
     //绑定信号与槽函数
     connect(&mytcpSocket_,SIGNAL(connected()),this,SLOT(connectHost()));//QT4,容易丢括号。
     connect(&mytcpSocket_,&QTcpSocket::readyRead,this,&TcpClient::recvMsg);
+    // 临时调试：连接失败时打印原因
+    connect(&mytcpSocket_, &QTcpSocket::errorOccurred, this, [this](QAbstractSocket::SocketError){
+        qDebug() << "连接失败:" << mytcpSocket_.errorString();
+    });
     //QT5connect( &对象名, &类名::信号名, 接收者对象, &类名::槽函数名 );
     //connect(&mytcpSocket_,&QTcpSocket::connected,this,&TcpClient::connectHost);
     //virtual void connectToHost(const QHostAddress &address, quint16 port, OpenMode mode = ReadWrite);
+    // 绕过系统代理直连（本机装 Hiddify 等代理工具时，Qt 默认走代理会导致连不上局域网服务器）
+    mytcpSocket_.setProxy(QNetworkProxy::NoProxy);
     mytcpSocket_.connectToHost(QHostAddress(strIp_),port_);
 }
 
@@ -250,6 +257,8 @@ void TcpClient::recvMsg()
             {
                 strCurPath_=strCurPath_+"/"+strEntryName;
                 qDebug()<<strCurPath_;
+                // 拼完立即清空，否则后续刷新（含删文件夹/删文件的自动刷新）会重复拼接路径
+                opeWidget::getInstance().getBook().ClearEntryName();
             }
             opeWidget::getInstance().getBook().updateFileList(pdu);
             break;
