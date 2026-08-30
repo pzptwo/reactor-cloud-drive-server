@@ -23,8 +23,6 @@ Connection::~Connection()
 {
   //delete clientchannel_;
   //delete clientsock_; // 这里相当于我拿走了new的全部
-  //打印日志
-  printf("conn已被析构\n");
 }
 
 int Connection::fd() const { return clientsock_->fd(); }

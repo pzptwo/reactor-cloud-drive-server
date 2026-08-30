@@ -50,19 +50,21 @@ void Epoll::updatechannel(Channel *ch)
     {
         if((epoll_ctl(epollfd_,EPOLL_CTL_MOD,ch->fd(),&ev))==-1)
         {
-            perror("epoll_ctl failed \n");
-            exit(-1);   //注意噶
+            // 连接关闭竞态下 fd 可能已不在 epoll(ENOENT)，容错继续，别 exit 杀进程
+            if(errno != ENOENT) perror("epoll_ctl MOD failed \n");
         }
     }
     else
     {
         if((epoll_ctl(epollfd_,EPOLL_CTL_ADD,ch->fd(),&ev))==-1)
         {
-            perror("epoll_ctl failed \n");
-            exit(-1);
+            if(errno != EEXIST) perror("epoll_ctl ADD failed \n");
+            else ch->setinepoll(true);   // 已存在视为已挂上
         }
-        //这里已经挂书上来更新值
-        ch->setinepoll(true);
+        else
+        {
+            ch->setinepoll(true);
+        }
     }
 }   
 
@@ -73,10 +75,13 @@ void Epoll::removechannel(Channel *ch)
         printf("removechannel()\n");
         if((epoll_ctl(epollfd_,EPOLL_CTL_DEL,ch->fd(),0))==-1)
         {
-            perror("epoll_ctl failed \n");
-            exit(-1);
+            // 重复删除/并发关闭时 fd 可能已不在本 epoll(ENOENT)，容错继续，不能 exit 杀掉服务端
+            if(errno != ENOENT)
+            {
+                perror("epoll_ctl failed \n");
+            }
         }
-        //ch->setinepoll(false);
+        ch->setinepoll(false);   // ★ 摘除后必须复位，否则重复 remove/update 会拿旧状态去 MOD/ADD
     }
 }
 //这里很妙使用了stl里面的vector去存放epoll_wait的evs;
@@ -117,6 +122,11 @@ std::vector<Channel *>Epoll::loop(int timeout)
     int fdnums=epoll_wait(epollfd_,events_,Maxevents,timeout);//这个函数仔细解释,等待监视事件fd又是件发生
         if(fdnums==-1)
         {
+            // EINTR（被信号打断）是正常现象，返回空让事件循环重新 wait，绝不能 exit 杀服务端
+            if(errno == EINTR)
+            {
+                return channels;
+            }
             perror("epoll_wait fail\n");
             //循环---》break
             exit(-1) ;

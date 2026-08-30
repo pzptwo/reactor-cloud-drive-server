@@ -2,6 +2,7 @@
 #include "EventLoop.h"
 #include "Epoll.h"
 #include <sys/epoll.h>
+#include <cerrno>
 
 using namespace std;
 
@@ -122,7 +123,9 @@ void Channel::handleevent()
     }
     else 
     {
-        //remove();   //从事件删除Channel；
+        // EPOLLERR/EPOLLHUP 等错误事件：水平触发下不会因读取而清除，
+        // 不摘除的话 epoll_wait 会无限立即返回 → 100% CPU 空转，必须 remove
+        remove();
         errorback_();
     }
 }

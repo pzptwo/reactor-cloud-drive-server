@@ -1,5 +1,6 @@
 #include "Acceptor.h"
 #include <utility>
+#include <cerrno>
 
 
 //
@@ -12,7 +13,7 @@ Acceptor::Acceptor(EventLoop *loop,const std::string ip,const uint16_t port):loo
     servsock_.settcpnodelay(true);
     InetAddress servaddr(ip,port);
     servsock_.bind(servaddr);
-    servsock_.listen();
+    servsock_.listen(4096);   // backlog 提高到 4096：压测 1000+ 并发连入时避免 SYN 被丢
     //Epoll ep;
     //ep.addfd(servsock.fd(),EPOLLIN);
     //EventLoop loop;
@@ -30,14 +31,23 @@ Acceptor::~Acceptor()
 //这里是新的连接请求,实在servsock 这个管道符里面
 void Acceptor::newConnection()
 {
-    //这里用指针的原因是在堆区？还是栈忘了哈哈哈哈，就是防止这个{}结束释放clientsock
-    //这里要分清楚在accept这还是属于listenfd(我的理解)
-    InetAddress clientaddr;//如果用别的构造函数，会咋样
-    std::unique_ptr<Socket> clientsock(new Socket(servsock_.accept(clientaddr)));//(相当于传进来clientfd)
-    
-    //Connection *conn=new Connection(loop_,clientsock);//这里也没有释放，为了耦合低
-    clientsock->setipport(clientaddr.ip(),clientaddr.port());
-    newConnectioncb_(std::move(clientsock));
+    // 一次 EPOLLIN 事件把待 accept 的连接全部取完（循环到 EAGAIN），
+    // 避免 backlog 堆积导致新连接 SYN 被内核丢弃（压测 1000 并发时出现超时）
+    while (true)
+    {
+        InetAddress clientaddr;
+        int clientfd = servsock_.accept(clientaddr);
+        if (clientfd < 0)
+        {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) break;  // 取完了
+            if (errno == EINTR) continue;                        // 信号打断，重试
+            // fd 耗尽(EMFILE)等：拿 -1 建 Socket 会导致后续 fd%threadNum_ 越界崩溃，直接放弃本次
+            break;
+        }
+        std::unique_ptr<Socket> clientsock(new Socket(clientfd));//(相当于传进来clientfd)
+        clientsock->setipport(clientaddr.ip(), clientaddr.port());
+        newConnectioncb_(std::move(clientsock));
+    }
 }
 
 void Acceptor::setnewConnectioncb(std::function<void(std::unique_ptr<Socket>)> fn)

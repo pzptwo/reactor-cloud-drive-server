@@ -83,6 +83,7 @@ void TcpServer::newConnection(std::unique_ptr<Socket>clientsock)
 
     //防止move与unique_ptr
     int fd=clientsock->fd();
+    if (fd < 0) return;   // 防御：accept 失败产生的无效 fd 直接丢弃（正常已被 Acceptor 拦住）
     //这里Connection里面输普通指针
     spConnection conn(new Connection(subloop_[fd%threadNum_].get(),std::move(clientsock)));
     conn->setcloseback(std::bind(&TcpServer::closecallback,this,std::placeholders::_1));
