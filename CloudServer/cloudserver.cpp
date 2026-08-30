@@ -496,7 +496,9 @@ void CloudServer::handleMoveFile(spConnection conn, PDU *pdu)
     sscanf(pdu->caData, "%d %d %s", &srcLen, &desLen, moveFileName);
 
     std::string srcPath((char *)pdu->caMsg, srcLen);
-    std::string desPath((char *)pdu->caMsg + srcLen, desLen);
+    // 客户端布局：srcPath(0..srcLen-1) + '\0'分隔 + desPath(srcLen+1..)
+    // 与 book.cpp selectMoveDir 的写入偏移 (srcLen+1) 严格对应
+    std::string desPath((char *)pdu->caMsg + srcLen + 1, desLen);
 
     PDU *resp = mkPDU(0);
     resp->uiMsgType_ = ENUM_MSG_TYPE_MOVE_FILE_RESPONSE;

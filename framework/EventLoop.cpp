@@ -133,6 +133,12 @@ void EventLoop::wakeIO()
 
  void EventLoop::handletime()
  {
+    // 必须把 timerfd 的到期计数读走，否则水平触发下它永远可读 -> epoll_wait 立即返回 -> 100% CPU 空转
+    uint64_t expirations = 0;
+    if (read(timerfd_, &expirations, sizeof(expirations)) == -1 && errno != EAGAIN) {
+        // 非阻塞 fd，到期计数读不到时忽略（下次再读）
+    }
+
     // 重新计时——因为 timerfd 不会自动循环
     struct itimerspec timeout;
     memset(&timeout, 0, sizeof(struct itimerspec));

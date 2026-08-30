@@ -77,6 +77,10 @@ bool DB::init()
         " friendid INTEGER);";
     if (!execSql(db_, sql)) return false;
 
+    // 崩溃自愈：上次进程若被强杀(SIGKILL)或异常退出，online 可能残留 1
+    // 登录查询要求 online=0，残留会导致"已在线"无法重登，启动时统一复位
+    execSql(db_, "update usrInfo set online=0");
+
     // 打印现有用户（对应 Qt init 的日志）
     printf("=== 当前用户列表 ===\n");
     sqlite3_stmt *stmt = nullptr;
