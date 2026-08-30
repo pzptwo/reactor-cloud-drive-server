@@ -78,7 +78,9 @@ void TcpClient::recvMsg()
     {
     //tcpsocket套接字里面有东西了
     qDebug()<<mytcpSocket_.bytesAvailable();//当前客户端已经发送过来、等待你读取的 字节数量;
-    while(mytcpSocket_.bytesAvailable() >= sizeof(uint))
+    // 下载响应处理中会置 bDownlaod_=true：一旦进入下载模式立即停 PDU 解析，
+    // 防止把粘包到达的文件字节/后续响应当成 PDU 解析
+    while(mytcpSocket_.bytesAvailable() >= sizeof(uint) && !opeWidget::getInstance().getBook().getbDownlaod())
     {
     //分析现在的pdu格式,一定要先把uiPDULen先读出来，不先读的话，uiMsgLen得不到
     //先用peek窥探完整PDU长度，避免半包时消费了头部却读不完整
@@ -361,7 +363,9 @@ void TcpClient::recvMsg()
     pdu=NULL;
     }  // while
     }
-    else
+    // 下载模式（可能刚在本函数内切进来的）：把剩余数据当文件字节写，
+    // 不能等下一次 readyRead（若数据已全部到达则不会再触发）
+    if(opeWidget::getInstance().getBook().getbDownlaod())
     {
         QByteArray buffer=mytcpSocket_.readAll();
         downloadFile.write(buffer);
