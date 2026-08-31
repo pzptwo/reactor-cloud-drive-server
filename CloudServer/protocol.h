@@ -114,6 +114,8 @@ enum ENUM_MSG_TYPE
 
     ENUM_MSG_TYPE_MOVE_FILE_RESPEST,   //移动文件
     ENUM_MSG_TYPE_MOVE_FILE_RESPONSE,
+    ENUM_MSG_TYPE_PING,   //压测基准消息（纯内存，无磁盘/DB），仅用于吞吐测试
+    ENUM_MSG_TYPE_PONG,
     ENUM_MSG_TYPE_MAX=0x00ffffff
 };
 

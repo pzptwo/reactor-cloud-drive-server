@@ -1,41 +1,47 @@
 #include "db.h"
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
+
+// MySQL 连接参数（对应 VM 上建好的库/用户）
+static const char *DB_HOST = "localhost";
+static const char *DB_USER = "cloud";
+static const char *DB_PASS = "123456";
+static const char *DB_NAME = "clouddrive";
 
 // 执行一条 SQL（无结果集），打印错误
-static bool execSql(sqlite3 *db, const char *sql)
+static bool execSql(MYSQL *db, const char *sql)
 {
-    char *errmsg = nullptr;
-    int rc = sqlite3_exec(db, sql, nullptr, nullptr, &errmsg);
-    if (rc != SQLITE_OK) {
-        fprintf(stderr, "SQL 执行失败: %s\n  SQL: %s\n", errmsg ? errmsg : "unknown", sql);
-        if (errmsg) sqlite3_free(errmsg);
+    if (mysql_query(db, sql) != 0) {
+        fprintf(stderr, "SQL 执行失败: %s\n  SQL: %s\n", mysql_error(db), sql);
         return false;
     }
     return true;
 }
 
 // 查询第一行第一列的 int（找不到返回 def）
-static int queryInt(sqlite3 *db, const char *sql, int def = 0)
+static int queryInt(MYSQL *db, const char *sql, int def = 0)
 {
-    sqlite3_stmt *stmt = nullptr;
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) return def;
+    if (mysql_query(db, sql) != 0) return def;
+    MYSQL_RES *res = mysql_store_result(db);
+    if (!res) return def;
     int val = def;
-    if (sqlite3_step(stmt) == SQLITE_ROW)
-        val = sqlite3_column_int(stmt, 0);
-    sqlite3_finalize(stmt);
+    MYSQL_ROW row = mysql_fetch_row(res);
+    if (row && row[0]) val = atoi(row[0]);
+    mysql_free_result(res);
     return val;
 }
 
 // 查询 name 列填充到 out；dedup=true 时去重
-static void queryNames(sqlite3 *db, const char *sql, std::vector<std::string> &out, bool dedup = false)
+static void queryNames(MYSQL *db, const char *sql, std::vector<std::string> &out, bool dedup = false)
 {
-    sqlite3_stmt *stmt = nullptr;
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) return;
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        const unsigned char *name = sqlite3_column_text(stmt, 0);
-        if (!name) continue;
-        std::string s((const char *)name);
+    if (mysql_query(db, sql) != 0) return;
+    MYSQL_RES *res = mysql_store_result(db);
+    if (!res) return;
+    MYSQL_ROW row;
+    while ((row = mysql_fetch_row(res))) {
+        if (!row[0]) continue;
+        std::string s(row[0]);
         if (dedup) {
             bool dup = false;
             for (auto &x : out)
@@ -44,7 +50,7 @@ static void queryNames(sqlite3 *db, const char *sql, std::vector<std::string> &o
         }
         out.push_back(s);
     }
-    sqlite3_finalize(stmt);
+    mysql_free_result(res);
 }
 
 DB &DB::getInstance()
@@ -55,27 +61,38 @@ DB &DB::getInstance()
 
 DB::~DB()
 {
-    if (db_) sqlite3_close(db_);
+    if (db_) mysql_close(db_);
 }
 
 bool DB::init()
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (sqlite3_open("cloudDrive.db", &db_) != SQLITE_OK) {
-        fprintf(stderr, "打开数据库失败: %s\n", db_ ? sqlite3_errmsg(db_) : "unknown");
+    db_ = mysql_init(nullptr);
+    if (!db_) {
+        fprintf(stderr, "mysql_init 失败\n");
         return false;
     }
-    // 建表（与 Qt 版表结构一致；IF NOT EXISTS 兼容已有库文件）
-    const char *sql =
+    // 断线自动重连 + utf8mb4（支持中文）
+    bool reconnect = true;
+    mysql_options(db_, MYSQL_OPT_RECONNECT, &reconnect);
+    mysql_set_character_set(db_, "utf8mb4");
+
+    if (!mysql_real_connect(db_, DB_HOST, DB_USER, DB_PASS, DB_NAME, 0, nullptr, 0)) {
+        fprintf(stderr, "连接 MySQL 失败: %s\n", mysql_error(db_));
+        return false;
+    }
+
+    // 建表（IF NOT EXISTS 兼容已存在的库）
+    execSql(db_,
         "CREATE TABLE IF NOT EXISTS usrInfo ("
-        " id INTEGER PRIMARY KEY AUTOINCREMENT,"
-        " name TEXT UNIQUE,"
-        " pwd TEXT,"
-        " online INTEGER DEFAULT 0);"
+        " id INT AUTO_INCREMENT PRIMARY KEY,"
+        " name VARCHAR(64) UNIQUE,"
+        " pwd VARCHAR(64),"
+        " online INT DEFAULT 0)");
+    execSql(db_,
         "CREATE TABLE IF NOT EXISTS friend ("
-        " id INTEGER,"
-        " friendid INTEGER);";
-    if (!execSql(db_, sql)) return false;
+        " id INT,"
+        " friendid INT)");
 
     // 崩溃自愈：上次进程若被强杀(SIGKILL)或异常退出，online 可能残留 1
     // 登录查询要求 online=0，残留会导致"已在线"无法重登，启动时统一复位
@@ -83,16 +100,14 @@ bool DB::init()
 
     // 打印现有用户（对应 Qt init 的日志）
     printf("=== 当前用户列表 ===\n");
-    sqlite3_stmt *stmt = nullptr;
-    if (sqlite3_prepare_v2(db_, "select id,name,pwd,online from usrInfo", -1, &stmt, nullptr) == SQLITE_OK) {
-        while (sqlite3_step(stmt) == SQLITE_ROW) {
-            printf("  id=%d name=%s pwd=%s online=%d\n",
-                   sqlite3_column_int(stmt, 0),
-                   sqlite3_column_text(stmt, 1),
-                   sqlite3_column_text(stmt, 2),
-                   sqlite3_column_int(stmt, 3));
+    if (mysql_query(db_, "select id,name,pwd,online from usrInfo") == 0) {
+        MYSQL_RES *res = mysql_store_result(db_);
+        if (res) {
+            MYSQL_ROW row;
+            while ((row = mysql_fetch_row(res)))
+                printf("  id=%s name=%s pwd=%s online=%s\n", row[0], row[1], row[2], row[3]);
+            mysql_free_result(res);
         }
-        sqlite3_finalize(stmt);
     }
     printf("====================\n");
     return true;
@@ -112,18 +127,15 @@ bool DB::handlelogin(const char *caName, const char *caPwd)
     std::lock_guard<std::mutex> lock(mutex_);
     if (!caName || !caPwd) return false;
     char sql[512];
+    // 找一条"名字+密码对 + 不在线"的记录，存在才允许登录
     snprintf(sql, sizeof(sql),
-             "select * from usrInfo where name='%s' and pwd='%s' and online=0", caName, caPwd);
-    sqlite3_stmt *stmt = nullptr;
-    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
-    bool found = sqlite3_step(stmt) == SQLITE_ROW;
-    sqlite3_finalize(stmt);
-    if (found) {
-        snprintf(sql, sizeof(sql),
-                 "update usrInfo set online=1 where name='%s' and pwd='%s'", caName, caPwd);
-        execSql(db_, sql);
-    }
-    return found;
+             "select id from usrInfo where name='%s' and pwd='%s' and online=0", caName, caPwd);
+    int id = queryInt(db_, sql, -1);
+    if (id < 0) return false;
+    snprintf(sql, sizeof(sql),
+             "update usrInfo set online=1 where name='%s' and pwd='%s'", caName, caPwd);
+    execSql(db_, sql);
+    return true;
 }
 
 void DB::handleoffline(const char *caName)
@@ -148,15 +160,7 @@ int DB::handleSearchUser(const char *caName)
     std::lock_guard<std::mutex> lock(mutex_);
     char sql[256];
     snprintf(sql, sizeof(sql), "select online from usrInfo where name='%s'", caName);
-    sqlite3_stmt *stmt = nullptr;
-    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return -1;
-    if (sqlite3_step(stmt) == SQLITE_ROW) {
-        int ret = sqlite3_column_int(stmt, 0);
-        sqlite3_finalize(stmt);
-        return ret;   // 1 在线 / 0 离线
-    }
-    sqlite3_finalize(stmt);
-    return -1;   // 不存在
+    return queryInt(db_, sql, -1);   // 1 在线 / 0 离线 / -1 不存在
 }
 
 int DB::handleAddUserCheak(const char *caLoginName, const char *caAddUserName)
@@ -167,26 +171,17 @@ int DB::handleAddUserCheak(const char *caLoginName, const char *caAddUserName)
     // 1) 是否已是好友（双向）
     char sql[512];
     snprintf(sql, sizeof(sql),
-             "SELECT * FROM friend "
+             "SELECT count(*) FROM friend "
              "WHERE (id = (SELECT id FROM usrInfo WHERE name='%1$s') AND friendid = (SELECT id FROM usrInfo WHERE name='%2$s')) "
              "OR (id = (SELECT id FROM usrInfo WHERE name='%2$s') AND friendid = (SELECT id FROM usrInfo WHERE name='%1$s'))",
              caLoginName, caAddUserName);
-    sqlite3_stmt *stmt = nullptr;
-    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return -1;
-    bool isFriend = sqlite3_step(stmt) == SQLITE_ROW;
-    sqlite3_finalize(stmt);
-    if (isFriend) return 0;   // 已是好友
+    if (queryInt(db_, sql, 0) > 0) return 0;   // 已是好友
 
     // 2) 检查对方在线状态
     snprintf(sql, sizeof(sql), "select online from usrInfo where name='%s'", caAddUserName);
-    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return -1;
-    if (sqlite3_step(stmt) == SQLITE_ROW) {
-        int online = sqlite3_column_int(stmt, 0);
-        sqlite3_finalize(stmt);
-        return online == 1 ? 1 : 2;   // 1 在线 / 2 离线
-    }
-    sqlite3_finalize(stmt);
-    return 3;   // 对方不存在
+    int online = queryInt(db_, sql, -1);
+    if (online < 0) return 3;   // 对方不存在
+    return online == 1 ? 1 : 2; // 1 在线 / 2 离线
 }
 
 void DB::handleAddUser(const char *caLoginName, const char *caAddUserName)

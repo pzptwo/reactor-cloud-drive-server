@@ -72,6 +72,7 @@ private:
     void handleDownloadFile(spConnection conn, PDU *pdu);     // 下载请求
     void handleShareFile(spConnection conn, PDU *pdu);        // 共享请求
     void handleShareNoteResponse(spConnection conn, PDU *pdu); // 接收者确认共享
+    void handlePing(spConnection conn, PDU *pdu);              // 压测基准：PING->PONG（纯内存）
 
     // 上传状态机：连接在上传模式时，收到的原始数据直接写文件（不走 PDU 分包）
     struct UploadState {

@@ -3,22 +3,22 @@
 
 // ============================================================
 // 数据库模块（Linux 版，替代 Qt 的 opedb）
-// 基于 sqlite3 C API，表结构与 Qt 版完全一致：
-//   usrInfo(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, pwd TEXT, online INTEGER)
-//   friend (id INTEGER, friendid INTEGER)
+// 基于 MySQL C API（libmysqlclient），表结构与 Qt 版一致：
+//   usrInfo(id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(64) UNIQUE, pwd VARCHAR(64), online INT DEFAULT 0)
+//   friend (id INT, friendid INT)
 // 线程安全：所有方法内部加全局互斥锁，串行化访问
 // ============================================================
 #include <string>
 #include <vector>
 #include <mutex>
-#include <sqlite3.h>
+#include <mysql/mysql.h>
 
 class DB
 {
 public:
     static DB &getInstance();
 
-    bool init();   // 打开 cloudDrive.db + 建表（IF NOT EXISTS）+ 打印现有用户
+    bool init();   // 连接 MySQL + 建表（IF NOT EXISTS）+ 打印现有用户
 
     // ---- 用户 ----
     bool handleregister(const char *caName, const char *caPwd);
@@ -44,7 +44,7 @@ private:
     DB(const DB &) = delete;
     DB &operator=(const DB &) = delete;
 
-    sqlite3 *db_ = nullptr;
+    MYSQL *db_ = nullptr;
     std::mutex mutex_;   // 全局互斥，串行化所有数据库操作
 };
 

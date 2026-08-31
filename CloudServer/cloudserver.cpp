@@ -141,6 +141,7 @@ void CloudServer::handlePdu(spConnection conn, PDU *pdu)
     case ENUM_MSG_TYPE_DOWNLOAD_FILE_RESPEST: handleDownloadFile(conn, pdu); break;
     case ENUM_MSG_TYPE_SHARE_FILE_RESPEST:    handleShareFile(conn, pdu); break;
     case ENUM_MSG_TYPE_SHARE_FILE_NOTE_RESPONSE: handleShareNoteResponse(conn, pdu); break;
+    case ENUM_MSG_TYPE_PING: handlePing(conn, pdu); break;
     default:
         printf("未处理的消息类型: %u\n", pdu->uiMsgType_);
         break;
@@ -659,6 +660,14 @@ void CloudServer::handleShareNoteResponse(spConnection conn, PDU *pdu)
     else if (fileutil::exists(sharePath))
         fileutil::copyFile(sharePath, recvPath);
     printf("共享文件 %s -> %s\n", sharePath.c_str(), recvPath.c_str());
+}
+
+void CloudServer::handlePing(spConnection conn, PDU *pdu)
+{
+    // 压测基准消息：把类型翻成 PONG 原样回给客户端，纯内存操作（不碰磁盘/数据库）
+    // 用于隔离测框架的真实网络吞吐（对比扫盘类业务消息）
+    pdu->uiMsgType_ = ENUM_MSG_TYPE_PONG;
+    sendTo(conn->fd(), pdu);
 }
 
 // ---------------- 发送 ----------------

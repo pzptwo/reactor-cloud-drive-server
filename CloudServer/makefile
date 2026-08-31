@@ -13,7 +13,7 @@ FRAMEWORK_SRCS = $(FRAMEWORK_DIR)/InetAddress.cpp \
                  $(FRAMEWORK_DIR)/Timestamp.cpp
 
 CXXFLAGS = -g -I. -I$(FRAMEWORK_DIR)
-LDFLAGS = -lpthread -lsqlite3
+LDFLAGS = -lpthread -lmysqlclient
 
 all: cloudserver test_protocol test_db test_fileutil
 
@@ -24,7 +24,7 @@ test_protocol: test_protocol.cpp protocol.cpp protocol.h
 	g++ $(CXXFLAGS) -o test_protocol test_protocol.cpp protocol.cpp
 
 test_db: test_db.cpp db.cpp db.h
-	g++ $(CXXFLAGS) -o test_db test_db.cpp db.cpp -lsqlite3
+	g++ $(CXXFLAGS) -o test_db test_db.cpp db.cpp -lmysqlclient
 
 test_fileutil: test_fileutil.cpp fileutil.cpp fileutil.h protocol.h
 	g++ $(CXXFLAGS) -o test_fileutil test_fileutil.cpp fileutil.cpp
