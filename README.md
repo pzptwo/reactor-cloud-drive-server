@@ -1,6 +1,6 @@
-# CloudDrive —— 基于自研 Reactor 高并发框架的多用户私有云网盘
+# CloudDrive —— 基于Reactor 高并发框架的多用户云网盘
 
-基于**自研 C++ Reactor 高并发网络框架**（主从 Reactor + 线程池 + epoll）的多用户私有云网盘系统：服务端为 Linux 原生 C++（g++14），前端为 Windows Qt 5.15 客户端，二者通过自定义 **PDU 二进制协议**（字节级一致）通信。
+基于**C++ Reactor 高并发网络框架**（主从 Reactor + 线程池 + epoll）的多用户云网盘系统：服务端为 Linux 原生 C++（g++14），前端为 Windows Qt 5.15 客户端，二者通过自定义 **PDU 二进制协议**（字节级一致）通信。
 
 ## 第一部分 项目简介
 
@@ -8,11 +8,11 @@
 
 本项目前身是「myCloudDrive Qt 云盘系统」——Windows 上基于单线程 `QTcpServer` + SQLite 的 C/S 云盘。单线程模型在高并发下成为瓶颈（一个连接卡住会影响全部连接），且无法发挥多核性能。
 
-升级方案：**服务端用自研 Reactor 高并发框架以纯 C++ 重写并迁移到 Linux**，客户端与 PDU 协议**完全复用、零改动**，只改 IP/端口配置即可连接新服务端。
+升级方案：**服务端用Reactor 高并发框架以纯 C++ 重写并迁移到 Linux**，客户端与 PDU 协议**完全复用、零改动**，只改 IP/端口配置即可连接新服务端。
 
 ### 1.2 项目目标
 
-- **服务端**：基于自研 Reactor 框架（主从 Reactor + 线程池 + epoll），在 1000-2000 并发连接下稳定运行、无崩溃、无 CPU 空转、无连接泄漏
+- **服务端**：基于Reactor 框架（主从 Reactor + 线程池 + epoll），在 1000-2000 并发连接下稳定运行、无崩溃、无 CPU 空转、无连接泄漏
 - **客户端**：完全复用现有 Qt 客户端（UI 与协议零改动）
 - **协议**：复用 PDU 二进制协议，服务端/客户端字节级一致，天然支持粘包/半包
 
@@ -29,7 +29,7 @@
 
 ```
 cloud-drive/
-├── framework/         # 自研 Reactor 高并发框架（与业务解耦，可复用）
+├── framework/         # Reactor 高并发框架（与业务解耦，可复用）
 ├── CloudServer/       # 服务端业务层（协议分发、MySQL、文件工具、压测）
 └── web/               # 前端 Qt 客户端（原独立仓库，完整历史并入）
 ```
@@ -38,7 +38,7 @@ cloud-drive/
 
 | 阶段 | 提交 | 内容 |
 |---|---|---|
-| 框架 | init | 自研 Reactor 框架（主从 Reactor + 线程池 + epoll） |
+| 框架 | init | Reactor 框架（主从 Reactor + 线程池 + epoll） |
 | 业务 | feat | CloudServer 业务层：17 类消息分发、数据库、文件工具 |
 | 联调 | fix×2 | 任务9：timerfd 空转、移动路径偏移差 1、强杀后在线残留自愈 |
 | 压测 | fix | 任务10：修复 6 个框架级缺陷（EMFILE 越界崩溃、重复 remove 杀进程、EINTR、CPU 空转、backlog） |
@@ -241,7 +241,7 @@ while (buf.size() >= 4) {
 
 ## 第五部分 模块详解
 
-### 5.1 framework/ —— 自研 Reactor 高并发框架（与业务解耦）
+### 5.1 framework/ —— Reactor 高并发框架（与业务解耦）
 
 | 模块 | 职责 |
 |---|---|
