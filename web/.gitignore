@@ -1,0 +1,14 @@
+# ===== Qt 客户端 TcpClient =====
+
+# Qt Creator 本地配置（机器相关，不入库）
+*.pro.user
+
+# 构建目录
+/build/
+
+# 编译产物
+*.o
+*.obj
+
+# 编辑器临时文件
+*.autosave
