@@ -15,7 +15,7 @@ FRAMEWORK_SRCS = $(FRAMEWORK_DIR)/InetAddress.cpp \
 CXXFLAGS = -g -I. -I$(FRAMEWORK_DIR)
 LDFLAGS = -lpthread -lmysqlclient
 
-all: cloudserver test_protocol test_db test_fileutil
+all: cloudserver test_protocol test_db test_fileutil stress_test
 
 cloudserver: main.cpp cloudserver.cpp cloudserver.h protocol.cpp protocol.h db.cpp db.h fileutil.cpp fileutil.h
 	g++ $(CXXFLAGS) -o cloudserver main.cpp cloudserver.cpp protocol.cpp db.cpp fileutil.cpp $(FRAMEWORK_SRCS) $(LDFLAGS)
@@ -29,6 +29,9 @@ test_db: test_db.cpp db.cpp db.h
 test_fileutil: test_fileutil.cpp fileutil.cpp fileutil.h protocol.h
 	g++ $(CXXFLAGS) -o test_fileutil test_fileutil.cpp fileutil.cpp
 
+stress_test: stress_test.cpp
+	g++ $(CXXFLAGS) -o stress_test stress_test.cpp -pthread
+
 clean:
-	rm -f cloudserver test_protocol test_db test_fileutil cloudDrive.db
+	rm -f cloudserver test_protocol test_db test_fileutil stress_test cloudDrive.db
 	rm -rf test_fileutil_dir test_fileutil_dir_copy
